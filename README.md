@@ -1,5 +1,7 @@
 # GPT-2 Function Calling — from scratch
 
+**[🕹️ Try it live](https://huggingface.co/spaces/noFFENSE/gpt2-function-calling)** · [📖 Write-up with animations](https://mron03.github.io/gpt2-function-calling/) · [🤗 Weights](https://huggingface.co/noFFENSE/gpt2-355M-function-calling)
+
 GPT-2 implemented **from scratch in PyTorch** and fine-tuned to do **function calling**: given a JSON function schema and a user request, the model decides whether to call the function and emits a parseable `<functioncall>` JSON payload with the right arguments.
 
 No Hugging Face `transformers`, no PEFT — the transformer, the weight loading from OpenAI's original TF checkpoints, the training loop, and the evaluation harness are all hand-written. Based on the methodology of Sebastian Raschka's *Build a Large Language Model From Scratch* (ch. 7), extended from instruction tuning to structured function calling.
@@ -67,6 +69,7 @@ src/gpt2fc/
 tests/              25 unit tests (model, data pipeline, parser, decoding, config) — no network, no weights
 notebooks/          the learning journey: data exploration → architecture → training
 cloud/              self-contained Kaggle/Colab training & eval notebooks + Azure ML job
+demo/               Gradio app behind the hosted Space (base vs fine-tuned, side by side)
 ```
 
 ## How it works
@@ -87,9 +90,12 @@ uv pip install -e ".[train,dev]"
 pytest                       # 25 tests, runs in ~2s
 ```
 
-**Demo** (downloads nothing; needs a fine-tuned checkpoint in `checkpoints/`):
+**Demo** (the fine-tuned checkpoint is hosted on [Hugging Face](https://huggingface.co/noFFENSE/gpt2-355M-function-calling) — or skip the download entirely and use the [live Space](https://huggingface.co/spaces/noFFENSE/gpt2-function-calling)):
 
 ```bash
+huggingface-cli download noFFENSE/gpt2-355M-function-calling \
+    gpt2-355M-function-calling.pth --local-dir checkpoints
+
 gpt2fc-chat --checkpoint checkpoints/gpt2-355M-function-calling.pth \
     --user "What's the weather like in Almaty right now?"
 ```

@@ -279,7 +279,7 @@ footer a { color: var(--ink-2); }
 
 <span class="kicker">Pet project write-up</span>
 <h1>GPT-2, from scratch, learns to call functions</h1>
-<p class="byline">by <a href="https://github.com/mron03">Mansur Orazkhan</a> · PyTorch, no <code>transformers</code>, no PEFT · <a href="https://github.com/mron03/gpt2-function-calling">source on GitHub</a></p>
+<p class="byline">by <a href="https://github.com/mron03">Mansur Orazkhan</a> · PyTorch, no <code>transformers</code>, no PEFT · <a href="https://github.com/mron03/gpt2-function-calling">source on GitHub</a> · <a href="https://huggingface.co/spaces/noFFENSE/gpt2-function-calling">try it live</a></p>
 
 <p class="lede">I wrote GPT-2 in raw PyTorch — attention, layer norm, the training loop, everything — and then fine-tuned it until it stopped writing internet text and started emitting machine-readable function calls. This page is the story: the architecture, the training, one very educational bug, and the before/after.</p>
 
@@ -396,6 +396,7 @@ footer a { color: var(--ink-2); }
 <button class="replay" id="replay">↺ Replay</button>
 
 <p>The base model is a web-text predictor: it sees a JSON blob, opens a brace, and pads whitespace until the token budget runs out. It has no concept of the dialog, the tool, or stopping. One epoch of fine-tuning installs the whole protocol: answer as the assistant, treat the schema as callable, pull <code>"Almaty"</code> out of the user's sentence, emit end-of-text, done.</p>
+<p class="note"><strong>Don't take my word for it</strong> — both models run live in a <a href="https://huggingface.co/spaces/noFFENSE/gpt2-function-calling">Hugging Face Space</a>: type your own request, edit the schema, and watch them stream side by side.</p>
 
 <h2>The bug that made a working model look broken</h2>
 <p>Here's the war story. My first evaluation said the model failed at function calling almost completely — single-digit accuracy. The generations <em>looked</em> right, but nothing parsed. The culprit wasn't the model. Glaive's ground truth (and therefore my faithfully-imitating model) emits <em>almost</em>-JSON:</p>
@@ -434,7 +435,7 @@ footer a { color: var(--ink-2); }
 <p>A KV cache (decoding is O(n²) without one, and you feel it), multi-turn function calling with <code>FUNCTION RESPONSE</code> turns fed back into the context, and a full-test-split evaluation on GPU. The scaffolding for all three is in the repo.</p>
 
 <footer>
-  <p><a href="https://github.com/mron03/gpt2-function-calling">Code, tests, and training recipes on GitHub</a> · architecture learned from <a href="https://github.com/rasbt/LLMs-from-scratch">Sebastian Raschka, <em>Build a Large Language Model From Scratch</em></a> · data: <a href="https://huggingface.co/datasets/glaiveai/glaive-function-calling-v2">Glaive Function Calling v2</a> · base weights: OpenAI GPT-2.</p>
+  <p><a href="https://github.com/mron03/gpt2-function-calling">Code, tests, and training recipes on GitHub</a> · <a href="https://huggingface.co/spaces/noFFENSE/gpt2-function-calling">live demo</a> + <a href="https://huggingface.co/noFFENSE/gpt2-355M-function-calling">weights</a> on Hugging Face · architecture learned from <a href="https://github.com/rasbt/LLMs-from-scratch">Sebastian Raschka, <em>Build a Large Language Model From Scratch</em></a> · data: <a href="https://huggingface.co/datasets/glaiveai/glaive-function-calling-v2">Glaive Function Calling v2</a> · base weights: OpenAI GPT-2.</p>
   <p>© 2026 Mansur Orazkhan</p>
 </footer>
 
