@@ -1,0 +1,18 @@
+# Environments
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Large artifacts (model weights, checkpoints, full eval outputs)
+checkpoints/
+weights/
+notebooks/gpt2
+results/eval-results.json
+
+# Notebook noise
+.ipynb_checkpoints/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/

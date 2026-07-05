@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gpt2fc"
+version = "1.0.0"
+description = "GPT-2 implemented from scratch in PyTorch and fine-tuned for function calling on Glaive Function Calling v2"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Mansur Orazkhan" }]
+dependencies = [
+    "torch>=2.2.2",
+    "tiktoken>=0.5.1",
+    "numpy>=1.26",
+    "pandas>=2.2.1",
+    "matplotlib>=3.7.1",
+    "tqdm>=4.66.1",
+    "requests>=2.31",
+    "huggingface-hub>=0.24",
+]
+
+[project.optional-dependencies]
+# TensorFlow is only needed to read OpenAI's original GPT-2 checkpoints (training)
+train = ["tensorflow>=2.16.2"]
+dev = ["pytest>=8.0", "ruff>=0.4", "jupyterlab>=4.0"]
+
+[project.scripts]
+gpt2fc-train = "gpt2fc.training.train:main"
+gpt2fc-eval = "gpt2fc.inference.evaluate:main"
+gpt2fc-chat = "gpt2fc.inference.chat:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 140
+extend-exclude = ["notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
