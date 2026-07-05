@@ -16,7 +16,7 @@ class ScriptedModel(nn.Module):
         self.context_length = context_length
         self.calls = 0
 
-    def forward(self, idx):
+    def forward(self, idx, kv_cache=None):
         b, seq_len = idx.shape
         logits = torch.zeros(b, seq_len, self.vocab_size)
         next_token = self.script[min(self.calls, len(self.script) - 1)]

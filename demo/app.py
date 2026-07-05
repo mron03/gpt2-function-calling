@@ -2,7 +2,7 @@
 
 Runs on the free CPU tier of Hugging Face Spaces. Both checkpoints are plain
 PyTorch state_dicts for the hand-written GPTModel in gpt2fc — no TensorFlow,
-no transformers.
+no transformers. Decoding uses the KV cache, so each step feeds one token.
 """
 
 import json
@@ -15,7 +15,7 @@ from huggingface_hub import hf_hub_download
 from gpt2fc.config import EOS_TOKEN_ID, get_model_config
 from gpt2fc.inference.generate import get_tokenizer
 from gpt2fc.inference.parser import extract_functioncall
-from gpt2fc.model import GPTModel
+from gpt2fc.model import GPTModel, KVCache
 
 WEIGHTS_REPO = os.environ.get("WEIGHTS_REPO", "noFFENSE/gpt2-355M-function-calling")
 
@@ -35,48 +35,6 @@ DEFAULT_SCHEMA = json.dumps(
     },
     indent=2,
 )
-
-EXAMPLES = [
-    ["What's the weather like in Almaty right now?", DEFAULT_SCHEMA],
-    [
-        "I need to convert 100 US dollars to euros",
-        json.dumps(
-            {
-                "name": "convert_currency",
-                "description": "Convert an amount from one currency to another",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "amount": {"type": "number"},
-                        "from_currency": {"type": "string"},
-                        "to_currency": {"type": "string"},
-                    },
-                    "required": ["amount", "from_currency", "to_currency"],
-                },
-            },
-            indent=2,
-        ),
-    ],
-    [
-        "Set a reminder to call my mom tomorrow at 6pm",
-        json.dumps(
-            {
-                "name": "create_reminder",
-                "description": "Create a reminder for a specific time",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "task": {"type": "string"},
-                        "time": {"type": "string"},
-                    },
-                    "required": ["task", "time"],
-                },
-            },
-            indent=2,
-        ),
-    ],
-    ["Hey, how are you today?", DEFAULT_SCHEMA],
-]
 
 
 def load_model(filename):
@@ -101,19 +59,27 @@ def build_prompt(schema_str, user_message):
     )
 
 
+def preview_prompt(user_message, schema_str):
+    return build_prompt(schema_str, user_message.strip() or "<your message>")
+
+
 @torch.no_grad()
 def stream_generate(model, prompt, max_new_tokens):
-    """Greedy decoding, yielding the decoded continuation as it grows."""
-    idx = torch.tensor(TOKENIZER.encode(prompt, allowed_special={"<|endoftext|>"})).unsqueeze(0)
-    prompt_len = len(prompt)
-    context = model.context_length
+    """KV-cached greedy decoding, yielding the decoded continuation as it grows."""
+    ids = TOKENIZER.encode(prompt, allowed_special={"<|endoftext|>"})
+    idx = torch.tensor(ids).unsqueeze(0)
+    cache = KVCache()
+    logits = model(idx[:, -model.context_length:], kv_cache=cache)
+    generated = []
     for _ in range(max_new_tokens):
-        logits = model(idx[:, -context:])
-        next_idx = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
-        if next_idx.item() == EOS_TOKEN_ID:
+        next_id = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
+        if next_id.item() == EOS_TOKEN_ID:
             break
-        idx = torch.cat((idx, next_idx), dim=1)
-        yield TOKENIZER.decode(idx.squeeze(0).tolist())[prompt_len:]
+        generated.append(next_id.item())
+        yield TOKENIZER.decode(generated)
+        if cache.size >= model.context_length:
+            break
+        logits = model(next_id, kv_cache=cache)
 
 
 def run(user_message, schema_str, max_new_tokens):
@@ -143,26 +109,47 @@ def run(user_message, schema_str, max_new_tokens):
 with gr.Blocks(title="GPT-2 function calling — before vs after") as demo:
     gr.Markdown(
         "# GPT-2, from scratch, learns to call functions\n"
-        "GPT-2 355M implemented in raw PyTorch and fine-tuned on "
+        "GPT-2 355M implemented in raw PyTorch (no `transformers`) and fine-tuned on "
         "[Glaive Function Calling v2](https://huggingface.co/datasets/glaiveai/glaive-function-calling-v2). "
-        "Give it a function schema and a request — the fine-tuned model emits a structured call, "
-        "the untouched base model shows why that isn't free. "
+        "Describe what you want — the fine-tuned model emits a structured function call, "
+        "while the untouched base model shows what fine-tuning is for. "
         "[Code](https://github.com/mron03/gpt2-function-calling) · "
-        "[write-up](https://mron03.github.io/gpt2-function-calling/)\n\n"
-        "*Free CPU Space: expect ~1–2 tokens/s, and the fine-tuned model streams first. "
-        "The models share weights with nothing — no transformers, no KV cache, just the loop.*"
+        "[write-up](https://mron03.github.io/gpt2-function-calling/)"
     )
     with gr.Row():
         with gr.Column():
-            user_message = gr.Textbox(label="Your message", placeholder="What's the weather like in Almaty right now?")
-            schema = gr.Code(label="Function schema (JSON)", value=DEFAULT_SCHEMA, language="json", lines=12)
-            max_tokens = gr.Slider(16, 96, value=64, step=8, label="Max new tokens")
+            user_message = gr.Textbox(
+                label="1 · Your message",
+                placeholder="What's the weather like in Almaty right now?",
+            )
+            with gr.Accordion("2 · Function schema — edit it, invent your own tool", open=False):
+                schema = gr.Code(value=DEFAULT_SCHEMA, language="json", lines=14, label="JSON schema")
+            with gr.Accordion("3 · The exact prompt the model receives", open=True):
+                prompt_view = gr.Textbox(
+                    value=preview_prompt("", DEFAULT_SCHEMA),
+                    lines=10,
+                    max_lines=16,
+                    show_label=False,
+                    interactive=False,
+                )
+                gr.Markdown(
+                    "*This full text — role sentinels, schema and all — is what gets tokenized "
+                    "and fed to both models. They were trained to continue it with an "
+                    "`###ASSISTANT:` turn.*"
+                )
+            max_tokens = gr.Slider(16, 128, value=64, step=8, label="Max new tokens")
             btn = gr.Button("Generate with both models", variant="primary")
         with gr.Column():
-            ft_box = gr.Textbox(label="Fine-tuned 355M", lines=5)
-            parsed_box = gr.Textbox(label="Parsed function call", lines=6)
-            base_box = gr.Textbox(label="Base GPT-2 355M (no fine-tuning)", lines=5)
-    gr.Examples(examples=EXAMPLES, inputs=[user_message, schema])
+            ft_box = gr.Textbox(label="✅ Fine-tuned 355M", lines=5)
+            parsed_box = gr.Textbox(label="Parsed function call", lines=7)
+            base_box = gr.Textbox(label="❌ Base GPT-2 355M (no fine-tuning)", lines=5)
+            gr.Markdown(
+                "*Free CPU hardware — a few tokens per second. The fine-tuned model streams "
+                "first; the base model follows on the identical prompt.*"
+            )
+
+    user_message.change(preview_prompt, inputs=[user_message, schema], outputs=prompt_view)
+    schema.change(preview_prompt, inputs=[user_message, schema], outputs=prompt_view)
     btn.click(run, inputs=[user_message, schema, max_tokens], outputs=[ft_box, parsed_box, base_box])
     user_message.submit(run, inputs=[user_message, schema, max_tokens], outputs=[ft_box, parsed_box, base_box])
 

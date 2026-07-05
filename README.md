@@ -61,7 +61,7 @@ src/gpt2fc/
 │   │                      pre-tokenized Dataset, collate fn with loss masking
 │   └── train.py           CLI: fine-tune GPT-2 (124M–1.5B) on Glaive
 └── inference/      3️⃣  Inference & evaluation
-    ├── generate.py        greedy / temperature / top-k decoding
+    ├── generate.py        KV-cached greedy / temperature / top-k decoding
     ├── parser.py          robust <functioncall> JSON extraction
     ├── evaluate.py        CLI: benchmark on the test split
     └── chat.py            CLI: single-turn demo with any function schema
@@ -132,7 +132,7 @@ gpt2fc-eval --checkpoint checkpoints/gpt2-355M-function-calling.pth \
 
 - A 355M model trained for one epoch learns the *format* essentially perfectly (near-100% parseable calls) and generalizes to unseen schemas and argument values — but it inherits its training distribution's quirks: it reproduces Glaive's single-quoted arguments style, and it refuses requests (e.g. flight booking) that Glaive's assistants habitually refused.
 - Evaluation infrastructure matters as much as the model: a parser bug made a well-trained model look completely broken (4% vs 100% parse rate on identical outputs).
-- Decoding is deliberately simple (no KV cache, batch size 1) — generation is O(n²); a KV cache is the natural next optimization.
+- Naive decoding recomputes attention over the whole sequence for every new token — O(n²) and painful on CPU. Adding a hand-rolled **KV cache** (each step feeds one token, attention reads cached keys/values) made generation **4.2× faster** on CPU (2.9 → 12.1 tok/s, identical outputs; see `tests/test_kv_cache.py` for the equivalence proof).
 - Single-turn only: the model sees `SYSTEM + USER → ASSISTANT`. Multi-turn function calling (with `FUNCTION RESPONSE` turns) is future work.
 
 ## Acknowledgments

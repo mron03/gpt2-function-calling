@@ -57,10 +57,10 @@ class TransformerBlock(nn.Module):
         self.norm2 = LayerNorm(cfg["emb_dim"])
         self.drop_resid = nn.Dropout(cfg["drop_rate"])
 
-    def forward(self, x):
+    def forward(self, x, kv_cache=None):
         shortcut = x
         x = self.norm1(x)
-        x = self.att(x)
+        x = self.att(x, kv_cache)
         x = self.drop_resid(x)
         x = x + shortcut
 

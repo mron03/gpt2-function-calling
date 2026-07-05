@@ -18,7 +18,7 @@ class MultiHeadAttention(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.register_buffer("mask", torch.triu(torch.ones(context_length, context_length), diagonal=1))
 
-    def forward(self, x):
+    def forward(self, x, kv_cache=None):
         b, num_tokens, d_in = x.shape
 
         keys = self.W_key(x)
@@ -33,8 +33,12 @@ class MultiHeadAttention(nn.Module):
         queries = queries.transpose(1, 2)
         values = values.transpose(1, 2)
 
+        if kv_cache is not None:
+            keys, values = kv_cache.update(keys, values)
+        n_total = keys.shape[2]
+
         attn_scores = queries @ keys.transpose(2, 3)
-        mask_bool = self.mask.bool()[:num_tokens, :num_tokens]
+        mask_bool = self.mask.bool()[n_total - num_tokens:n_total, :n_total]
         attn_scores.masked_fill_(mask_bool, -torch.inf)
 
         attn_weights = torch.softmax(attn_scores / keys.shape[-1]**0.5, dim=-1)

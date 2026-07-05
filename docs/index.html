@@ -431,8 +431,11 @@ footer a { color: var(--ink-2); }
 
 <p>Of the calls that parsed, all but <em>one</em> named the right function. The dominant failure mode is charmingly human: the model replies "Sure, let me look that up for you" — and then doesn't. It also inherited its teacher's quirks wholesale: it wraps arguments in Glaive's trademark single quotes, and it politely refuses to book flights, because Glaive's assistants always refused to book flights.</p>
 
+<h2>Making it fast(er): the KV cache</h2>
+<p>Naive decoding is O(n²): every new token recomputes attention over the entire sequence, so token #60 of a 250-token prompt re-processes ~300 positions just to produce one more. The fix is the classic one — cache each layer's key/value tensors and feed only the newest token per step. Implemented in the hand-written attention (the causal mask generalizes to a rectangular slice), it's <strong>4.2× faster on CPU</strong> — 2.9 → 12.1 tokens/s — with outputs verified bit-identical to the uncached path.</p>
+
 <h2>What I'd build next</h2>
-<p>A KV cache (decoding is O(n²) without one, and you feel it), multi-turn function calling with <code>FUNCTION RESPONSE</code> turns fed back into the context, and a full-test-split evaluation on GPU. The scaffolding for all three is in the repo.</p>
+<p>Multi-turn function calling with <code>FUNCTION RESPONSE</code> turns fed back into the context, batched decoding, and a full-test-split evaluation on GPU. The scaffolding is in the repo.</p>
 
 <footer>
   <p><a href="https://github.com/mron03/gpt2-function-calling">Code, tests, and training recipes on GitHub</a> · <a href="https://huggingface.co/spaces/noFFENSE/gpt2-function-calling">live demo</a> + <a href="https://huggingface.co/noFFENSE/gpt2-355M-function-calling">weights</a> on Hugging Face · architecture learned from <a href="https://github.com/rasbt/LLMs-from-scratch">Sebastian Raschka, <em>Build a Large Language Model From Scratch</em></a> · data: <a href="https://huggingface.co/datasets/glaiveai/glaive-function-calling-v2">Glaive Function Calling v2</a> · base weights: OpenAI GPT-2.</p>

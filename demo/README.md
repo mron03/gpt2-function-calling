@@ -23,5 +23,5 @@ v2 — against the untouched pretrained base model on the same prompt.
 - Full write-up with animations: <https://mron03.github.io/gpt2-function-calling/>
 - Weights: <https://huggingface.co/noFFENSE/gpt2-355M-function-calling>
 
-Runs on the free CPU tier — generation streams at a leisurely ~1–2 tokens/s
-(the implementation is deliberately simple: no KV cache, batch size 1).
+Runs on the free CPU tier with the hand-rolled KV cache — generation streams
+at a few tokens per second, one hand-written attention layer at a time.

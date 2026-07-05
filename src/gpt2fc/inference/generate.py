@@ -2,7 +2,7 @@ import tiktoken
 import torch
 
 from gpt2fc.config import EOS_TOKEN_ID, get_model_config
-from gpt2fc.model import GPTModel
+from gpt2fc.model import GPTModel, KVCache
 
 
 def load_finetuned_model(checkpoint_path, model_size, device):
@@ -19,26 +19,48 @@ def get_tokenizer():
     return tiktoken.get_encoding("gpt2")
 
 
-def generate(model, idx, max_new_tokens, context_size, temperature=0.0, top_k=None, eos_id=EOS_TOKEN_ID):
-    """Autoregressive decoding: greedy by default, sampling when temperature > 0."""
+def _sample(logits, temperature, top_k):
+    if top_k is not None:
+        top_logits, _ = torch.topk(logits, k=top_k)
+        min_val = top_logits[:, -1]
+        logits = torch.where(logits < min_val, torch.tensor(float("-inf")).to(logits.device), logits)
+
+    if temperature > 0.0:
+        logits = logits / temperature
+        logits = logits - logits.max(dim=-1, keepdim=True).values
+        probs = torch.softmax(logits, dim=-1)
+        return torch.multinomial(probs, num_samples=1)
+    return torch.argmax(logits, dim=-1, keepdim=True)
+
+
+def generate(model, idx, max_new_tokens, context_size, temperature=0.0, top_k=None, eos_id=EOS_TOKEN_ID,
+             use_cache=True):
+    """Autoregressive decoding: greedy by default, sampling when temperature > 0.
+
+    With use_cache (default) each step feeds only the newest token and attends over
+    cached K/V — O(n) per token instead of O(n²). The cached path stops at the
+    context limit; the uncached path keeps going with a sliding window.
+    """
+    if use_cache:
+        cache = KVCache()
+        with torch.no_grad():
+            logits = model(idx[:, -context_size:], kv_cache=cache)
+        for _ in range(max_new_tokens):
+            next_idx = _sample(logits[:, -1, :], temperature, top_k)
+            if eos_id is not None and next_idx.item() == eos_id:
+                break
+            idx = torch.cat((idx, next_idx), dim=1)
+            if cache.size >= context_size:
+                break
+            with torch.no_grad():
+                logits = model(next_idx, kv_cache=cache)
+        return idx
+
     for _ in range(max_new_tokens):
         idx_cond = idx[:, -context_size:]
         with torch.no_grad():
             logits = model(idx_cond)
-        logits = logits[:, -1, :]
-
-        if top_k is not None:
-            top_logits, _ = torch.topk(logits, k=top_k)
-            min_val = top_logits[:, -1]
-            logits = torch.where(logits < min_val, torch.tensor(float("-inf")).to(logits.device), logits)
-
-        if temperature > 0.0:
-            logits = logits / temperature
-            logits = logits - logits.max(dim=-1, keepdim=True).values
-            probs = torch.softmax(logits, dim=-1)
-            next_idx = torch.multinomial(probs, num_samples=1)
-        else:
-            next_idx = torch.argmax(logits, dim=-1, keepdim=True)
+        next_idx = _sample(logits[:, -1, :], temperature, top_k)
 
         if eos_id is not None and next_idx.item() == eos_id:
             break
