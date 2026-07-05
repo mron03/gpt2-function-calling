@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GPT-2, From Scratch, Learns to Call Functions</title>
+<meta name="description" content="How I implemented GPT-2 in raw PyTorch and fine-tuned it to emit structured function calls — with animations of the transformer, the training, and the before/after.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚙️</text></svg>">
+<style>
+:root {
+  --page:        #f9f9f7;
+  --surface:     #fcfcfb;
+  --ink:         #0b0b0b;
+  --ink-2:       #52514e;
+  --muted:       #898781;
+  --grid:        #e1e0d9;
+  --baseline:    #c3c2b7;
+  --border:      rgba(11,11,11,0.10);
+  --series-1:    #2a78d6;   /* blue  — val loss, accents */
+  --series-2:    #1baf7a;   /* aqua  — train loss */
+  --seq-100:     #cde2fb;   /* sequential blue ramp (attention heat, meter track) */
+  --seq-250:     #86b6ef;
+  --seq-400:     #3987e5;
+  --seq-550:     #1c5cab;
+  --seq-700:     #0d366b;
+  --good:        #006300;
+  --bad:         #d03b3b;
+  --code-bg:     #f2f1ee;
+  --wash-1:      rgba(42,120,214,0.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page:      #0d0d0d;
+    --surface:   #1a1a19;
+    --ink:       #ffffff;
+    --ink-2:     #c3c2b7;
+    --muted:     #898781;
+    --grid:      #2c2c2a;
+    --baseline:  #383835;
+    --border:    rgba(255,255,255,0.10);
+    --series-1:  #3987e5;
+    --series-2:  #199e70;
+    --seq-100:   #10365c;
+    --seq-250:   #1c5cab;
+    --seq-400:   #3987e5;
+    --seq-550:   #86b6ef;
+    --seq-700:   #cde2fb;
+    --good:      #0ca30c;
+    --bad:       #e66767;
+    --code-bg:   #232322;
+    --wash-1:    rgba(57,135,229,0.12);
+  }
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.65;
+  font-size: 17px;
+}
+main { max-width: 780px; margin: 0 auto; padding: 0 20px 96px; }
+h1 { font-size: clamp(1.9rem, 5vw, 2.9rem); line-height: 1.15; letter-spacing: -0.02em; margin: 0.2em 0 0.35em; }
+h2 { font-size: 1.55rem; letter-spacing: -0.01em; margin: 2.6em 0 0.5em; }
+h3 { font-size: 1.15rem; margin: 2em 0 0.4em; }
+p  { margin: 0.9em 0; color: var(--ink); }
+a  { color: var(--series-1); text-underline-offset: 3px; }
+.kicker { color: var(--series-1); font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.12em; margin-top: 64px; display: block; }
+.byline { color: var(--ink-2); font-size: 0.95rem; margin-bottom: 2.2em; }
+.byline a { color: var(--ink-2); }
+.lede { font-size: 1.15rem; color: var(--ink-2); }
+code, pre {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.86em;
+}
+code { background: var(--code-bg); border-radius: 5px; padding: 0.12em 0.35em; }
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  line-height: 1.55;
+}
+pre code { background: none; padding: 0; }
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px 22px;
+  margin: 1.4em 0;
+}
+.note {
+  border-left: 3px solid var(--series-1);
+  background: var(--wash-1);
+  border-radius: 0 10px 10px 0;
+  padding: 12px 18px;
+  margin: 1.4em 0;
+  color: var(--ink-2);
+  font-size: 0.97rem;
+}
+.note strong { color: var(--ink); }
+figcaption, .caption { color: var(--muted); font-size: 0.85rem; margin-top: 10px; text-align: center; }
+figure { margin: 1.6em 0; }
+
+/* ---------- hero terminal ---------- */
+.hero-term {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin: 1.8em 0 1.2em;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.83rem;
+  line-height: 1.7;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.hero-term .dim { color: var(--muted); }
+.hero-term .user { color: var(--series-2); font-weight: 600; }
+.hero-term .out { color: var(--ink); }
+.cursor { display: inline-block; width: 0.55em; height: 1.1em; background: var(--series-1); vertical-align: text-bottom; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* ---------- transformer diagram ---------- */
+.stack { display: flex; flex-direction: column; gap: 0; align-items: stretch; margin: 10px 0 4px; }
+.stage {
+  border: 1px solid var(--border);
+  background: var(--page);
+  border-radius: 10px;
+  padding: 9px 14px;
+  font-size: 0.88rem;
+  color: var(--ink-2);
+  position: relative;
+  transition: box-shadow 0.35s, border-color 0.35s, color 0.35s;
+}
+.stage b { color: var(--ink); font-weight: 600; }
+.stage.lit { border-color: var(--series-1); box-shadow: 0 0 0 3px var(--wash-1); color: var(--ink); }
+.stage .tag { float: right; color: var(--muted); font-size: 0.75rem; font-family: ui-monospace, Menlo, monospace; }
+.arrow { text-align: center; color: var(--baseline); font-size: 0.8rem; line-height: 1.7; user-select: none; }
+.block-group {
+  border: 1px dashed var(--baseline);
+  border-radius: 12px;
+  padding: 10px;
+  margin: 0;
+  position: relative;
+}
+.block-group .depth {
+  position: absolute; top: -11px; right: 12px;
+  background: var(--surface); color: var(--muted);
+  padding: 0 8px; font-size: 0.75rem; letter-spacing: 0.04em;
+}
+.tokrow { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.tok {
+  font-family: ui-monospace, Menlo, monospace; font-size: 0.8rem;
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 2px 8px; background: var(--surface); color: var(--ink);
+}
+.probbars { display: flex; align-items: flex-end; gap: 6px; height: 74px; margin-top: 10px; padding-top: 4px; }
+.pb { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; max-width: 72px; }
+.pb .bar {
+  width: 100%; max-width: 24px;
+  background: var(--seq-250);
+  border-radius: 4px 4px 0 0;
+  height: 0; transition: height 0.9s cubic-bezier(.2,.8,.2,1);
+}
+.pb.win .bar { background: var(--series-1); }
+.pb .lbl { font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem; color: var(--ink-2); }
+.pb.win .lbl { color: var(--ink); font-weight: 600; }
+
+/* ---------- attention grid ---------- */
+.attn-wrap { display: flex; justify-content: center; overflow-x: auto; }
+.attn { border-collapse: separate; border-spacing: 2px; }
+.attn td, .attn th { width: 34px; height: 34px; text-align: center; padding: 0; }
+.attn th {
+  font-family: ui-monospace, Menlo, monospace; font-weight: 500;
+  font-size: 0.68rem; color: var(--ink-2);
+}
+.attn th.rowh { text-align: right; padding-right: 8px; white-space: nowrap; }
+.attn td { border-radius: 5px; background: var(--page); border: 1px solid var(--grid); transition: background 0.3s; }
+.attn td.future { background: transparent; border: 1px dashed var(--grid); }
+
+/* ---------- loss masking strip ---------- */
+.maskstrip { display: flex; flex-wrap: wrap; gap: 5px; margin: 12px 0 4px; }
+.mtok {
+  font-family: ui-monospace, Menlo, monospace; font-size: 0.74rem;
+  border-radius: 6px; padding: 3px 7px;
+  border: 1px solid var(--border);
+  color: var(--muted); background: var(--page);
+}
+.mtok.on { color: var(--ink); border-color: var(--series-1); background: var(--wash-1); }
+.mask-key { display: flex; gap: 18px; margin-top: 10px; font-size: 0.82rem; color: var(--ink-2); flex-wrap: wrap; }
+.key-dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: baseline; }
+
+/* ---------- facts row / stat tiles ---------- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 1.4em 0; }
+.tile {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px 16px;
+}
+.tile .label { font-size: 0.8rem; color: var(--ink-2); }
+.tile .value { font-size: 1.9rem; font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; margin-top: 2px; }
+.tile .sub { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+/* ---------- loss chart ---------- */
+.chart-card { padding: 18px 18px 10px; }
+.chart-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.chart-title { font-weight: 600; font-size: 0.98rem; }
+.legend { display: flex; gap: 16px; font-size: 0.8rem; color: var(--ink-2); }
+.legend .key { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.chart-wrap { position: relative; }
+#loss-svg { width: 100%; height: auto; display: block; }
+#loss-tip {
+  position: absolute; pointer-events: none; display: none;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 7px 10px; font-size: 0.76rem;
+  color: var(--ink-2); box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+  white-space: nowrap; z-index: 3;
+}
+#loss-tip b { color: var(--ink); font-variant-numeric: tabular-nums; }
+details.tbl { margin-top: 6px; }
+details.tbl summary { cursor: pointer; color: var(--muted); font-size: 0.8rem; }
+details.tbl table { border-collapse: collapse; font-size: 0.8rem; margin-top: 8px; }
+details.tbl th, details.tbl td { border: 1px solid var(--grid); padding: 4px 10px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+details.tbl th { color: var(--ink); }
+
+/* ---------- before / after ---------- */
+.duel { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 1.2em 0 0.4em; }
+@media (max-width: 640px) { .duel { grid-template-columns: 1fr; } }
+.duel .panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px 16px; min-height: 190px;
+}
+.panel h4 { margin: 0 0 8px; font-size: 0.86rem; color: var(--ink-2); font-weight: 600; }
+.panel .screen {
+  font-family: ui-monospace, Menlo, monospace; font-size: 0.76rem;
+  line-height: 1.65; white-space: pre-wrap; word-break: break-word; color: var(--ink);
+  min-height: 120px;
+}
+.panel .verdict { font-size: 0.8rem; margin-top: 10px; font-weight: 600; }
+.verdict.ok { color: var(--good); }
+.verdict.fail { color: var(--bad); }
+.sp { background: var(--grid); border-radius: 2px; }
+.replay {
+  font: inherit; font-size: 0.85rem; font-weight: 600;
+  color: var(--series-1); background: none;
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 14px; cursor: pointer; margin-top: 4px;
+}
+.replay:hover { background: var(--wash-1); }
+
+/* ---------- parser meters ---------- */
+.meter-row { margin: 14px 0; }
+.meter-row .mlabel { display: flex; justify-content: space-between; font-size: 0.86rem; color: var(--ink-2); margin-bottom: 6px; }
+.meter-row .mlabel b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.meter { height: 14px; border-radius: 7px; background: var(--seq-100); overflow: hidden; }
+.meter .fill { height: 100%; width: 0; background: var(--seq-400); border-radius: 7px; transition: width 1.2s cubic-bezier(.2,.8,.2,1); }
+
+/* roles in data sample */
+.role-sys { color: var(--series-1); font-weight: 600; }
+.role-user { color: var(--series-2); font-weight: 600; }
+.role-asst { color: var(--ink); font-weight: 700; }
+
+footer { color: var(--muted); font-size: 0.85rem; margin-top: 80px; border-top: 1px solid var(--grid); padding-top: 20px; }
+footer a { color: var(--ink-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+</style>
+</head>
+<body>
+<main>
+
+<span class="kicker">Pet project write-up</span>
+<h1>GPT-2, from scratch, learns to call functions</h1>
+<p class="byline">by <a href="https://github.com/mron03">Mansur Orazkhan</a> · PyTorch, no <code>transformers</code>, no PEFT · <a href="https://github.com/mron03/gpt2-function-calling">source on GitHub</a></p>
+
+<p class="lede">I wrote GPT-2 in raw PyTorch — attention, layer norm, the training loop, everything — and then fine-tuned it until it stopped writing internet text and started emitting machine-readable function calls. This page is the story: the architecture, the training, one very educational bug, and the before/after.</p>
+
+<div class="hero-term" id="hero-term" aria-label="Demo of the fine-tuned model producing a function call"></div>
+<p class="caption">Real output from the fine-tuned 355M model, greedy decoding, on a schema + request it never saw in training.</p>
+
+<h2>Where this came from</h2>
+<p>I learned to build the GPT architecture by working through Sebastian Raschka's book <a href="https://www.manning.com/books/build-a-large-language-model-from-scratch"><em>Build a Large Language Model From Scratch</em></a> — genuinely one of the best "no magic" resources out there. The book takes you as far as instruction tuning.</p>
+<p>Then I wanted my own twist. Function calling is what makes LLMs <em>useful</em> as agents — the model reads a JSON schema, decides whether a tool is needed, and produces a structured call instead of prose. Could a 2019-era GPT-2, with weights I loaded tensor-by-tensor from OpenAI's original TensorFlow checkpoints, learn that protocol? That extension — dataset, training run, evaluation harness — was my initiative, and it's the fun part.</p>
+
+<h2>Part 1 — The transformer, hand-built</h2>
+<p>No <code>AutoModel</code>. The whole model is ~200 lines of PyTorch: token + positional embeddings, a stack of pre-norm transformer blocks, a final layer norm, and a linear head that scores all 50,257 tokens of the vocabulary. Watch a forward pass:</p>
+
+<div class="card" id="fwd-card">
+  <div class="tokrow" aria-hidden="true">
+    <span class="tok">The</span><span class="tok">weather</span><span class="tok">in</span><span class="tok">Al</span><span class="tok">maty</span><span class="tok">is</span>
+  </div>
+  <div class="stack">
+    <div class="stage" data-step="0"><b>Token + positional embeddings</b> <span class="tag">50257×1024 · 1024×1024</span></div>
+    <div class="arrow">↓</div>
+    <div class="block-group">
+      <span class="depth">× 24 blocks (355M)</span>
+      <div class="stage" data-step="1"><b>LayerNorm → Masked multi-head attention</b> → +residual <span class="tag">16 heads</span></div>
+      <div class="arrow">↓</div>
+      <div class="stage" data-step="2"><b>LayerNorm → FeedForward (GELU)</b> → +residual <span class="tag">1024→4096→1024</span></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="stage" data-step="3"><b>Final LayerNorm → LM head</b> → logits over the vocabulary <span class="tag">1024×50257</span></div>
+  </div>
+  <div class="probbars" id="probbars" aria-hidden="true">
+    <div class="pb win"><div class="bar" data-h="92"></div><div class="lbl">sunny</div></div>
+    <div class="pb"><div class="bar" data-h="61"></div><div class="lbl">cold</div></div>
+    <div class="pb"><div class="bar" data-h="43"></div><div class="lbl">not</div></div>
+    <div class="pb"><div class="bar" data-h="28"></div><div class="lbl">expected</div></div>
+    <div class="pb"><div class="bar" data-h="14"></div><div class="lbl">…</div></div>
+  </div>
+  <p class="caption">One forward pass: six tokens go in, a probability for every possible next token comes out. Generation is just doing this in a loop.</p>
+</div>
+
+<h3>The causal mask</h3>
+<p>The one rule that makes a language model a language model: a token may attend to itself and the past, never the future. In the attention matrix that's a triangle — everything above the diagonal is set to −∞ before the softmax:</p>
+
+<figure class="card">
+  <div class="attn-wrap"><table class="attn" id="attn-grid" aria-label="Causal attention pattern: each row attends only to columns at or before it"></table></div>
+  <figcaption>Each row is a token computing attention; darker blue = more weight. The dashed cells are the future — masked out, always.</figcaption>
+</figure>
+
+<p>Multi-head attention, the GELU feed-forward, layer norm — each is a small, testable module (<code>src/gpt2fc/model/</code>), covered by unit tests that check the causal mask actually blocks information flow and the parameter count matches the analytic formula (354,749,440 for 355M — you learn to love exact numbers when a single transposed weight silently breaks everything).</p>
+
+<h2>Part 2 — Teaching it to call functions</h2>
+<p>The dataset is <a href="https://huggingface.co/datasets/glaiveai/glaive-function-calling-v2">Glaive Function Calling v2</a>: 112,960 dialogs, each with a function schema and a conversation where the assistant sometimes calls the function. A training sample looks like this:</p>
+
+<pre><code><span class="role-sys">###SYSTEM:</span> You are a helpful assistant with access to the following functions…
+{ "name": "get_current_weather", "parameters": { "location": … } }
+<span class="role-user">###USER:</span> What's the weather like in Almaty right now?
+<span class="role-asst">###ASSISTANT:</span> &lt;functioncall&gt; {"name": "get_current_weather",
+  "arguments": '{"location": "Almaty"}'}</code></pre>
+
+<h3>The trick: only grade the answer</h3>
+<p>If you compute the loss over the whole sequence, the model wastes capacity learning to predict the prompt it was just given. Instead, the collate function shifts the targets by one and stamps <code>ignore_index=-100</code> on every prompt and padding token — cross-entropy only flows through the assistant's response:</p>
+
+<div class="card">
+  <div class="maskstrip" id="maskstrip" aria-label="Prompt tokens are masked out of the loss; only response tokens are trained on"></div>
+  <div class="mask-key">
+    <span><span class="key-dot" style="background:var(--page); border:1px solid var(--border)"></span>masked, −100 — no gradient</span>
+    <span><span class="key-dot" style="background:var(--wash-1); border:1px solid var(--series-1)"></span>loss computed — this is what the model learns</span>
+  </div>
+</div>
+
+<h3>The run</h3>
+<div class="tiles">
+  <div class="tile"><div class="label">Model</div><div class="value">355M</div><div class="sub">GPT-2 medium, full fine-tune</div></div>
+  <div class="tile"><div class="label">Training samples</div><div class="value">112,960</div><div class="sub">1 epoch, batch size 8</div></div>
+  <div class="tile"><div class="label">Hardware</div><div class="value">1× T4</div><div class="sub">Kaggle free tier</div></div>
+  <div class="tile"><div class="label">Wall clock</div><div class="value">9.4 h</div><div class="sub">AdamW, lr 5e-5</div></div>
+</div>
+
+<figure class="card chart-card">
+  <div class="chart-head">
+    <span class="chart-title">Cross-entropy loss on response tokens</span>
+    <span class="legend">
+      <span><span class="key" style="background:var(--series-2)"></span>train</span>
+      <span><span class="key" style="background:var(--series-1)"></span>validation</span>
+    </span>
+  </div>
+  <div class="chart-wrap">
+    <svg id="loss-svg" viewBox="0 0 720 320" role="img" aria-label="Training and validation loss over 12,625 steps, falling from 1.85 to about 0.14"></svg>
+    <div id="loss-tip"></div>
+  </div>
+  <figcaption>Validation loss falls from 1.85 to 0.135 over 12,625 steps. Hover the chart for exact values.</figcaption>
+  <details class="tbl">
+    <summary>View as table</summary>
+    <table id="loss-table"><thead><tr><th>Step</th><th>Train loss</th><th>Val loss</th></tr></thead><tbody></tbody></table>
+  </details>
+</figure>
+
+<p>That cliff at the start is the model learning the <em>format</em> — the <code>###ASSISTANT:</code> convention, the <code>&lt;functioncall&gt;</code> tag, the JSON shape — within a few hundred steps. The long flat tail is the harder part: learning <em>when</em> to call, and how to fill in the arguments.</p>
+
+<h2>Before / after</h2>
+<p>Same prompt, same greedy decoding. Only the weights differ.</p>
+
+<div class="duel">
+  <div class="panel">
+    <h4>Base GPT-2 355M — pretrained only</h4>
+    <div class="screen" id="scr-base"></div>
+    <div class="verdict fail" id="v-base" style="visibility:hidden">✗ no call — just whitespace, forever</div>
+  </div>
+  <div class="panel">
+    <h4>Fine-tuned 355M</h4>
+    <div class="screen" id="scr-ft"></div>
+    <div class="verdict ok" id="v-ft" style="visibility:hidden">✓ parses — {"name": "get_current_weather", "arguments": {"location": "Almaty"}}</div>
+  </div>
+</div>
+<button class="replay" id="replay">↺ Replay</button>
+
+<p>The base model is a web-text predictor: it sees a JSON blob, opens a brace, and pads whitespace until the token budget runs out. It has no concept of the dialog, the tool, or stopping. One epoch of fine-tuning installs the whole protocol: answer as the assistant, treat the schema as callable, pull <code>"Almaty"</code> out of the user's sentence, emit end-of-text, done.</p>
+
+<h2>The bug that made a working model look broken</h2>
+<p>Here's the war story. My first evaluation said the model failed at function calling almost completely — single-digit accuracy. The generations <em>looked</em> right, but nothing parsed. The culprit wasn't the model. Glaive's ground truth (and therefore my faithfully-imitating model) emits <em>almost</em>-JSON:</p>
+
+<pre><code>{"name": "get_current_weather", "arguments": <b>'</b>{"location": "Almaty"}<b>'</b>}</code></pre>
+
+<p>The arguments object is wrapped in single quotes — invalid JSON, so <code>json.loads</code> throws. The fix: find the payload span by counting brace depth (regexes die on nested objects), then unwrap the single-quoted blob before parsing. Measured on the ground-truth answers themselves:</p>
+
+<div class="card" id="parser-card">
+  <div class="meter-row">
+    <div class="mlabel"><span>naive <code>json.loads</code></span><b id="m1v">0%</b></div>
+    <div class="meter"><div class="fill" id="m1" data-w="4.3"></div></div>
+  </div>
+  <div class="meter-row">
+    <div class="mlabel"><span>brace-depth + single-quote unwrap</span><b id="m2v">0%</b></div>
+    <div class="meter"><div class="fill" id="m2" data-w="100"></div></div>
+  </div>
+  <p class="caption">Share of the test split's 1,856 ground-truth function calls each parser can read.</p>
+</div>
+
+<p class="note"><strong>Lesson:</strong> evaluation infrastructure deserves the same paranoia as model code. I nearly wrote off ~10 hours of GPU time over a quotation mark.</p>
+
+<h2>Results</h2>
+<p>Evaluated on 200 held-out dialogs the model never saw (84 contain a function call in the ground truth — those are the denominator). Scoring is strict: if a prediction doesn't parse, it counts as wrong everywhere.</p>
+
+<div class="tiles" id="result-tiles">
+  <div class="tile"><div class="label">Parseable call produced</div><div class="value"><span class="cnt" data-v="86.9">0</span>%</div></div>
+  <div class="tile"><div class="label">Correct function name</div><div class="value"><span class="cnt" data-v="85.7">0</span>%</div></div>
+  <div class="tile"><div class="label">Correct argument keys</div><div class="value"><span class="cnt" data-v="79.8">0</span>%</div></div>
+  <div class="tile"><div class="label">Exact match, all values</div><div class="value"><span class="cnt" data-v="75.0">0</span>%</div></div>
+</div>
+
+<p>Of the calls that parsed, all but <em>one</em> named the right function. The dominant failure mode is charmingly human: the model replies "Sure, let me look that up for you" — and then doesn't. It also inherited its teacher's quirks wholesale: it wraps arguments in Glaive's trademark single quotes, and it politely refuses to book flights, because Glaive's assistants always refused to book flights.</p>
+
+<h2>What I'd build next</h2>
+<p>A KV cache (decoding is O(n²) without one, and you feel it), multi-turn function calling with <code>FUNCTION RESPONSE</code> turns fed back into the context, and a full-test-split evaluation on GPU. The scaffolding for all three is in the repo.</p>
+
+<footer>
+  <p><a href="https://github.com/mron03/gpt2-function-calling">Code, tests, and training recipes on GitHub</a> · architecture learned from <a href="https://github.com/rasbt/LLMs-from-scratch">Sebastian Raschka, <em>Build a Large Language Model From Scratch</em></a> · data: <a href="https://huggingface.co/datasets/glaiveai/glaive-function-calling-v2">Glaive Function Calling v2</a> · base weights: OpenAI GPT-2.</p>
+  <p>© 2026 Mansur Orazkhan</p>
+</footer>
+
+</main>
+<script>
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const onSeen = (el, fn, threshold = 0.35) => {
+  if (!el) return;
+  if (reduced) { fn(); return; }
+  const io = new IntersectionObserver((es) => {
+    es.forEach(e => { if (e.isIntersecting) { io.disconnect(); fn(); } });
+  }, { threshold });
+  io.observe(el);
+};
+
+/* ---------- hero typewriter ---------- */
+const heroParts = [
+  ["dim", "$ gpt2fc-chat --user "],
+  ["user", '"What’s the weather like in Almaty right now?"'],
+  ["dim", "\n\n"],
+  ["out", "###ASSISTANT: <functioncall> {\"name\": \"get_current_weather\",\n               \"arguments\": '{\"location\": \"Almaty\"}'}"]
+];
+function typeInto(el, parts, speed, done) {
+  el.innerHTML = "";
+  const spans = parts.map(([cls]) => { const s = document.createElement("span"); s.className = cls; el.appendChild(s); return s; });
+  const cur = document.createElement("span"); cur.className = "cursor"; el.appendChild(cur);
+  if (reduced) { parts.forEach(([, t], i) => spans[i].textContent = t); if (done) done(); return; }
+  let p = 0, c = 0;
+  (function tick() {
+    if (p >= parts.length) { if (done) done(); return; }
+    const txt = parts[p][1];
+    spans[p].textContent = txt.slice(0, ++c);
+    if (c >= txt.length) { p++; c = 0; }
+    setTimeout(tick, txt[c - 1] === "\n" ? 140 : speed);
+  })();
+}
+onSeen(document.getElementById("hero-term"), () => typeInto(document.getElementById("hero-term"), heroParts, 22), 0.1);
+
+/* ---------- forward-pass animation ---------- */
+const fwdCard = document.getElementById("fwd-card");
+onSeen(fwdCard, () => {
+  const stages = [...fwdCard.querySelectorAll(".stage")];
+  let i = 0;
+  const step = () => {
+    stages.forEach(s => s.classList.remove("lit"));
+    if (i < stages.length) {
+      stages[i].classList.add("lit");
+      i++;
+      setTimeout(step, 700);
+    } else {
+      fwdCard.querySelectorAll(".pb .bar").forEach(b => b.style.height = b.dataset.h + "%");
+      setTimeout(() => {
+        fwdCard.querySelectorAll(".pb .bar").forEach(b => b.style.height = 0);
+        i = 0; setTimeout(step, 900);
+      }, 3400);
+    }
+  };
+  if (reduced) {
+    fwdCard.querySelectorAll(".pb .bar").forEach(b => b.style.height = b.dataset.h + "%");
+  } else step();
+});
+
+/* ---------- causal attention grid ---------- */
+(function buildAttn() {
+  const toks = ["What", "’s", "the", "weather", "in", "Al", "maty", "?"];
+  const heat = ["var(--seq-100)", "var(--seq-250)", "var(--seq-400)", "var(--seq-550)", "var(--seq-700)"];
+  const grid = document.getElementById("attn-grid");
+  let html = "<thead><tr><th></th>" + toks.map(t => `<th scope="col">${t}</th>`).join("") + "</tr></thead><tbody>";
+  for (let r = 0; r < toks.length; r++) {
+    html += `<tr><th scope="row" class="rowh">${toks[r]}</th>`;
+    for (let c = 0; c < toks.length; c++) {
+      html += c > r ? '<td class="future"></td>' : `<td data-r="${r}" data-c="${c}"></td>`;
+    }
+    html += "</tr>";
+  }
+  grid.innerHTML = html + "</tbody>";
+  // plausible causal weights: strong self + recency, seeded pseudo-random extras
+  const weight = (r, c) => {
+    if (c === r) return 4;
+    const rec = Math.max(0, 3 - (r - c));
+    const bump = ((r * 7 + c * 13) % 5 === 0) ? 2 : 0;
+    return Math.min(4, Math.max(0, rec + bump - 1));
+  };
+  const cells = [...grid.querySelectorAll("td[data-r]")];
+  onSeen(grid, () => {
+    cells.forEach((td) => {
+      const r = +td.dataset.r, c = +td.dataset.c;
+      const delay = reduced ? 0 : r * 260 + c * 45;
+      setTimeout(() => { td.style.background = heat[weight(r, c)]; td.style.borderColor = "transparent"; }, delay);
+    });
+  });
+})();
+
+/* ---------- loss-mask strip ---------- */
+(function buildMask() {
+  const prompt = ["###SYSTEM:", "You", "are", "a", "helpful", "…", "get_current_weather", "…", "###USER:", "What’s", "the", "weather", "in", "Almaty", "?"];
+  const resp = ["###ASSISTANT:", "<functioncall>", "{\"name\":", "\"get_current_weather\",", "\"arguments\":", "'{\"location\":", "\"Almaty\"}'}", "<eos>"];
+  const strip = document.getElementById("maskstrip");
+  prompt.forEach(t => { const s = document.createElement("span"); s.className = "mtok"; s.textContent = t; strip.appendChild(s); });
+  resp.forEach(t => { const s = document.createElement("span"); s.className = "mtok on"; s.textContent = t; strip.appendChild(s); });
+})();
+
+/* ---------- loss chart ---------- */
+(function lossChart() {
+  const D = [[0,1.635,1.850],[90,0.193,0.444],[180,0.204,0.348],[270,0.092,0.314],[360,0.137,0.279],[450,0.126,0.262],[540,0.096,0.249],[630,0.118,0.238],[720,0.122,0.214],[810,0.145,0.226],[900,0.167,0.239],[990,0.096,0.229],[1080,0.087,0.234],[1170,0.082,0.222],[1260,0.146,0.212],[1350,0.150,0.202],[1440,0.136,0.181],[1530,0.163,0.212],[1620,0.387,0.206],[1710,0.153,0.198],[1800,0.099,0.215],[1890,0.122,0.241],[1980,0.089,0.196],[2070,0.198,0.197],[2160,0.113,0.198],[2250,0.080,0.173],[2340,0.093,0.187],[2430,0.125,0.209],[2520,0.164,0.196],[2610,0.098,0.195],[2700,0.085,0.185],[2790,0.087,0.182],[2880,0.073,0.199],[2970,0.113,0.188],[3060,0.105,0.153],[3150,0.094,0.160],[3240,0.108,0.172],[3330,0.081,0.172],[3420,0.077,0.179],[3510,0.077,0.200],[3600,0.119,0.168],[3690,0.100,0.167],[3780,0.064,0.161],[3870,0.097,0.161],[3960,0.078,0.159],[4050,0.196,0.169],[4140,0.111,0.186],[4230,0.085,0.163],[4320,0.072,0.149],[4410,0.053,0.170],[4500,0.091,0.166],[4590,0.097,0.169],[4680,0.096,0.162],[4770,0.090,0.164],[4860,0.105,0.157],[4950,0.063,0.164],[5040,0.093,0.153],[5130,0.105,0.158],[5220,0.068,0.164],[5310,0.081,0.143],[5400,0.073,0.144],[5490,0.067,0.164],[5580,0.059,0.144],[5670,0.162,0.141],[5760,0.053,0.151],[5850,0.102,0.167],[5940,0.085,0.146],[6030,0.076,0.139],[6120,0.062,0.134],[6210,0.092,0.150],[6300,0.100,0.145],[6390,0.172,0.146],[6480,0.062,0.152],[6570,0.077,0.141],[6660,0.078,0.132],[6750,0.087,0.143],[6840,0.089,0.136],[6930,0.086,0.140],[7020,0.090,0.140],[7110,0.079,0.144],[7200,0.067,0.141],[7290,0.076,0.141],[7380,0.063,0.137],[7470,0.104,0.137],[7560,0.083,0.160],[7650,0.084,0.159],[7740,0.119,0.155],[7830,0.108,0.143],[7920,0.071,0.150],[8010,0.116,0.151],[8100,0.062,0.129],[8190,0.065,0.135],[8280,0.053,0.159],[8370,0.107,0.133],[8460,0.049,0.142],[8550,0.329,0.150],[8640,0.085,0.158],[8730,0.098,0.163],[8820,0.060,0.156],[8910,0.134,0.141],[9000,0.103,0.154],[9090,0.069,0.139],[9180,0.092,0.161],[9270,0.101,0.132],[9360,0.036,0.150],[9450,0.101,0.146],[9540,0.061,0.143],[9630,0.088,0.146],[9720,0.079,0.156],[9810,0.152,0.144],[9900,0.041,0.149],[9990,0.043,0.152],[10080,0.067,0.139],[10170,0.048,0.138],[10260,0.067,0.142],[10350,0.036,0.128],[10440,0.093,0.133],[10530,0.069,0.148],[10620,0.094,0.127],[10710,0.082,0.116],[10800,0.068,0.119],[10890,0.106,0.127],[10980,0.069,0.140],[11070,0.047,0.124],[11160,0.103,0.118],[11250,0.067,0.130],[11340,0.053,0.129],[11430,0.108,0.156],[11520,0.083,0.140],[11610,0.069,0.136],[11700,0.061,0.152],[11790,0.088,0.141],[11880,0.089,0.136],[11970,0.071,0.133],[12060,0.054,0.131],[12150,0.102,0.148],[12240,0.058,0.136],[12330,0.111,0.135],[12420,0.087,0.140],[12510,0.046,0.144],[12600,0.073,0.135],[12625,0.078,0.135]];
+  const svg = document.getElementById("loss-svg");
+  const NS = "http://www.w3.org/2000/svg";
+  const W = 720, H = 320, ML = 46, MR = 78, MT = 12, MB = 34;
+  const pw = W - ML - MR, ph = H - MT - MB;
+  const xmax = 12625, ymax = 2.0;
+  const X = s => ML + (s / xmax) * pw;
+  const Y = v => MT + ph - (v / ymax) * ph;
+  const mk = (tag, attrs, parent) => {
+    const el = document.createElementNS(NS, tag);
+    for (const k in attrs) el.setAttribute(k, attrs[k]);
+    (parent || svg).appendChild(el); return el;
+  };
+  // gridlines + y ticks
+  for (let v = 0; v <= 2.0001; v += 0.5) {
+    mk("line", { x1: ML, x2: ML + pw, y1: Y(v), y2: Y(v), stroke: "var(--grid)", "stroke-width": 1 });
+    mk("text", { x: ML - 8, y: Y(v) + 4, "text-anchor": "end", "font-size": 11, fill: "var(--muted)", style: "font-variant-numeric: tabular-nums" }).textContent = v.toFixed(1);
+  }
+  // baseline + x ticks
+  mk("line", { x1: ML, x2: ML + pw, y1: Y(0), y2: Y(0), stroke: "var(--baseline)", "stroke-width": 1 });
+  [0, 3000, 6000, 9000, 12000].forEach(s => {
+    mk("text", { x: X(s), y: H - 12, "text-anchor": "middle", "font-size": 11, fill: "var(--muted)", style: "font-variant-numeric: tabular-nums" }).textContent = s.toLocaleString();
+  });
+  mk("text", { x: ML + pw / 2, y: H - 0.5, "text-anchor": "middle", "font-size": 11, fill: "var(--muted)" }).textContent = "step";
+  const path = (idx) => D.map((d, i) => (i ? "L" : "M") + X(d[0]).toFixed(1) + " " + Y(d[idx]).toFixed(1)).join(" ");
+  const trainP = mk("path", { d: path(1), fill: "none", stroke: "var(--series-2)", "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" });
+  const valP = mk("path", { d: path(2), fill: "none", stroke: "var(--series-1)", "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" });
+  const last = D[D.length - 1];
+  // end markers (2px surface ring via stroke) + direct end labels in ink with tabular figures
+  const ends = [[last[2], "var(--series-1)", "val 0.135", 1], [last[1], "var(--series-2)", "train 0.078", 2]];
+  ends.forEach(([v, c, lbl, row]) => {
+    mk("circle", { cx: X(last[0]), cy: Y(v), r: 4.5, fill: c, stroke: "var(--surface)", "stroke-width": 2 });
+    const ty = row === 1 ? Y(v) - 8 : Y(v) + 16;
+    const t = mk("text", { x: X(last[0]) + 10, y: ty, "font-size": 11.5, fill: "var(--ink-2)", style: "font-variant-numeric: tabular-nums" });
+    t.textContent = lbl;
+    mk("circle", { cx: X(last[0]) + 4, cy: ty - 4, r: 3, fill: c });
+  });
+  // draw-on-scroll
+  [trainP, valP].forEach(p => {
+    const len = p.getTotalLength();
+    p.style.strokeDasharray = len; p.style.strokeDashoffset = len;
+  });
+  onSeen(svg, () => {
+    [trainP, valP].forEach(p => {
+      p.style.transition = "stroke-dashoffset 2.2s cubic-bezier(.3,.7,.3,1)";
+      requestAnimationFrame(() => p.style.strokeDashoffset = 0);
+    });
+  });
+  // hover crosshair + tooltip
+  const cross = mk("line", { y1: MT, y2: MT + ph, stroke: "var(--baseline)", "stroke-width": 1, visibility: "hidden" });
+  const dotT = mk("circle", { r: 4.5, fill: "var(--series-2)", stroke: "var(--surface)", "stroke-width": 2, visibility: "hidden" });
+  const dotV = mk("circle", { r: 4.5, fill: "var(--series-1)", stroke: "var(--surface)", "stroke-width": 2, visibility: "hidden" });
+  const tip = document.getElementById("loss-tip");
+  const wrap = svg.parentElement;
+  const show = (clientX) => {
+    const r = svg.getBoundingClientRect();
+    const sx = (clientX - r.left) * (W / r.width);
+    const step = Math.min(xmax, Math.max(0, (sx - ML) / pw * xmax));
+    let best = 0, bd = Infinity;
+    D.forEach((d, i) => { const dd = Math.abs(d[0] - step); if (dd < bd) { bd = dd; best = i; } });
+    const d = D[best];
+    cross.setAttribute("x1", X(d[0])); cross.setAttribute("x2", X(d[0]));
+    dotT.setAttribute("cx", X(d[0])); dotT.setAttribute("cy", Y(d[1]));
+    dotV.setAttribute("cx", X(d[0])); dotV.setAttribute("cy", Y(d[2]));
+    [cross, dotT, dotV].forEach(e => e.setAttribute("visibility", "visible"));
+    tip.innerHTML = `step <b>${d[0].toLocaleString()}</b><br>train <b>${d[1].toFixed(3)}</b> · val <b>${d[2].toFixed(3)}</b>`;
+    tip.style.display = "block";
+    const px = X(d[0]) / W * wrap.clientWidth;
+    tip.style.left = Math.min(wrap.clientWidth - tip.offsetWidth - 4, Math.max(4, px + 14)) + "px";
+    tip.style.top = "10px";
+  };
+  const hide = () => { [cross, dotT, dotV].forEach(e => e.setAttribute("visibility", "hidden")); tip.style.display = "none"; };
+  svg.addEventListener("mousemove", e => show(e.clientX));
+  svg.addEventListener("mouseleave", hide);
+  svg.addEventListener("touchstart", e => show(e.touches[0].clientX), { passive: true });
+  // table view (every 10th point)
+  const tb = document.querySelector("#loss-table tbody");
+  D.filter((_, i) => i % 10 === 0 || i === D.length - 1).forEach(d => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${d[0].toLocaleString()}</td><td>${d[1].toFixed(3)}</td><td>${d[2].toFixed(3)}</td>`;
+    tb.appendChild(tr);
+  });
+})();
+
+/* ---------- before / after duel ---------- */
+const PROMPT_MINI = '<span style="color:var(--muted)">###USER: What’s the weather like in Almaty right now?\n</span>';
+function runDuel() {
+  const base = document.getElementById("scr-base");
+  const ft = document.getElementById("scr-ft");
+  const vb = document.getElementById("v-base"), vf = document.getElementById("v-ft");
+  vb.style.visibility = "hidden"; vf.style.visibility = "hidden";
+  base.innerHTML = PROMPT_MINI; ft.innerHTML = PROMPT_MINI;
+  const baseSpan = document.createElement("span"); base.appendChild(baseSpan);
+  const ftSpan = document.createElement("span"); ft.appendChild(ftSpan);
+  const ftText = '###ASSISTANT: <functioncall> {"name": "get_current_weather", "arguments": \'{"location": "Almaty"}\'}';
+  if (reduced) {
+    baseSpan.innerHTML = "{" + '<span class="sp">  </span>'.repeat(48);
+    ftSpan.textContent = ftText;
+    vb.style.visibility = "visible"; vf.style.visibility = "visible";
+    return;
+  }
+  let i = 0;
+  (function tb() {
+    if (i === 0) baseSpan.textContent = "{";
+    else if (i < 60) baseSpan.innerHTML = "{" + '<span class="sp">  </span> '.repeat(i);
+    else { vb.style.visibility = "visible"; return; }
+    i++; setTimeout(tb, 55);
+  })();
+  let j = 0;
+  (function tf() {
+    ftSpan.textContent = ftText.slice(0, ++j);
+    if (j < ftText.length) setTimeout(tf, 26);
+    else vf.style.visibility = "visible";
+  })();
+}
+onSeen(document.querySelector(".duel"), runDuel);
+document.getElementById("replay").addEventListener("click", runDuel);
+
+/* ---------- parser meters ---------- */
+onSeen(document.getElementById("parser-card"), () => {
+  const animPct = (el, target, suffix) => {
+    if (reduced) { el.textContent = target + "%"; return; }
+    const t0 = performance.now();
+    (function f(t) {
+      const k = Math.min(1, (t - t0) / 1200);
+      el.textContent = (target * (1 - Math.pow(1 - k, 3))).toFixed(1) + "%";
+      if (k < 1) requestAnimationFrame(f);
+    })(t0);
+  };
+  ["m1", "m2"].forEach(id => { const el = document.getElementById(id); el.style.width = el.dataset.w + "%"; });
+  animPct(document.getElementById("m1v"), 4.3);
+  animPct(document.getElementById("m2v"), 100.0);
+});
+
+/* ---------- result counters ---------- */
+onSeen(document.getElementById("result-tiles"), () => {
+  document.querySelectorAll("#result-tiles .cnt").forEach(el => {
+    const target = parseFloat(el.dataset.v);
+    if (reduced) { el.textContent = target.toFixed(1); return; }
+    const t0 = performance.now();
+    (function f(t) {
+      const k = Math.min(1, (t - t0) / 1400);
+      el.textContent = (target * (1 - Math.pow(1 - k, 3))).toFixed(1);
+      if (k < 1) requestAnimationFrame(f);
+    })(t0);
+  });
+});
+</script>
+</body>
+</html>
