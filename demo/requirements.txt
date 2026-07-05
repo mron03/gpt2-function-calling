@@ -1,0 +1,4 @@
+gpt2fc @ git+https://github.com/mron03/gpt2-function-calling@cb30875
+torch>=2.2
+tiktoken>=0.5.1
+huggingface_hub
