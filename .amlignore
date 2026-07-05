@@ -1,0 +1,10 @@
+.venv/
+.git/
+checkpoints/
+weights/
+results/
+notebooks/gpt2
+__pycache__/
+*.pyc
+*.ipynb
+*.egg-info/

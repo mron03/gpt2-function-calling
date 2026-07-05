@@ -1,0 +1,33 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+
+experiment_name: gpt2-function-calling
+display_name: gpt2-124M-finetune
+
+# Project root is uploaded (respects .amlignore at the root)
+code: ../..
+
+command: >-
+  python -m gpt2fc.training.train
+  --model-size 124M
+  --num-epochs 2
+  --batch-size 8
+  --allowed-max-length 512
+  --data-slice -1
+  --models-dir /tmp/gpt2
+  --output-dir ${{outputs.checkpoints}}
+
+environment_variables:
+  PYTHONPATH: src
+
+environment:
+  # PyTorch 2.3.1 + CUDA 12.1; additional deps via conda.yml
+  image: pytorch/pytorch:2.3.1-cuda12.1-cudnn8-runtime
+  conda_file: conda.yml
+
+compute: azureml:gpt2-cluster
+
+outputs:
+  checkpoints:
+    type: uri_folder
+    mode: rw_mount

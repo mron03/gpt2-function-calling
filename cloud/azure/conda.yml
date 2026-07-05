@@ -1,0 +1,15 @@
+name: gpt2-finetune
+channels:
+  - defaults
+dependencies:
+  - pip:
+    # tensorflow-cpu: only used to load OpenAI TF checkpoints; CPU-only avoids
+    # GPU memory conflicts with PyTorch during training
+    - tensorflow-cpu>=2.18.0
+    - tiktoken>=0.5.1
+    - matplotlib>=3.7.1
+    - tqdm>=4.66.1
+    - pandas>=2.2.1
+    - psutil>=5.9.5
+    - huggingface-hub>=0.20
+    - datasets>=2.18
