@@ -51,6 +51,24 @@ TOKENIZER = get_tokenizer()
 print("Ready.")
 
 
+def validate_schemas(schema_str):
+    """Accept one JSON schema or several stacked ones (Glaive lists multiple
+    functions as concatenated JSON objects separated by a blank line)."""
+    decoder = json.JSONDecoder()
+    text = schema_str.strip()
+    if not text:
+        raise gr.Error("Schema is empty.")
+    idx = 0
+    while idx < len(text):
+        try:
+            _, end = decoder.raw_decode(text, idx)
+        except json.JSONDecodeError as e:
+            raise gr.Error(f"Schema is not valid JSON: {e}")
+        idx = end
+        while idx < len(text) and text[idx].isspace():
+            idx += 1
+
+
 def build_prompt(schema_str, user_message):
     return (
         "###SYSTEM: You are a helpful assistant with access to the following functions. "
@@ -85,10 +103,7 @@ def stream_generate(model, prompt, max_new_tokens):
 def run(user_message, schema_str, max_new_tokens):
     if not user_message.strip():
         raise gr.Error("Type a message first.")
-    try:
-        json.loads(schema_str)
-    except json.JSONDecodeError as e:
-        raise gr.Error(f"Schema is not valid JSON: {e}")
+    validate_schemas(schema_str)
 
     prompt = build_prompt(schema_str, user_message)
     ft_out, base_out, parsed = "", "", ""
@@ -124,6 +139,11 @@ with gr.Blocks(title="GPT-2 function calling — before vs after") as demo:
             )
             with gr.Accordion("2 · Function schema — edit it, invent your own tool", open=False):
                 schema = gr.Code(value=DEFAULT_SCHEMA, language="json", lines=14, label="JSON schema")
+                gr.Markdown(
+                    "*You can list **several** tools: stack JSON objects separated by a blank "
+                    "line, like the training data does. Tip: the model favors the first one, "
+                    "so put the most relevant tool on top.*"
+                )
             with gr.Accordion("3 · The exact prompt the model receives", open=True):
                 prompt_view = gr.Textbox(
                     value=preview_prompt("", DEFAULT_SCHEMA),
