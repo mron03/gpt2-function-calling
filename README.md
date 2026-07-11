@@ -68,7 +68,7 @@ src/gpt2fc/
 
 tests/              25 unit tests (model, data pipeline, parser, decoding, config) — no network, no weights
 notebooks/          the learning journey: data exploration → architecture → training
-cloud/              self-contained Kaggle/Colab training & eval notebooks + Azure ML job
+cloud/              Kaggle/Colab training & eval notebooks (pip-install the package, run the CLIs) + Azure ML job
 demo/               Gradio app behind the hosted Space (base vs fine-tuned, side by side)
 ```
 
