@@ -1,0 +1,9 @@
+{
+  "total_samples": 3929,
+  "fc_samples": 1856,
+  "non_fc_samples": 2073,
+  "parse_rate": 0.8842,
+  "fn_name_acc": 0.8798,
+  "args_key_acc": 0.8136,
+  "exact_match": 0.7753
+}

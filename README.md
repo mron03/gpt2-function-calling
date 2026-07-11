@@ -19,16 +19,16 @@ No Hugging Face `transformers`, no PEFT — the transformer, the weight loading 
 
 ## Results
 
-GPT-2 **355M** fine-tuned for 1 epoch on the full Glaive Function Calling v2 dataset (112,960 samples, Kaggle T4, ~9.4 h). Evaluated on 200 held-out test samples (84 of which have a function call in the ground truth); metrics are strict — an unparseable prediction counts as an error in every row.
+GPT-2 **355M** fine-tuned for 1 epoch on the full Glaive Function Calling v2 dataset (112,960 samples, Kaggle T4, ~9.4 h). Evaluated on the full held-out test split — 3,929 well-formed dialogs, 1,856 of which have a function call in the ground truth; metrics are strict — an unparseable prediction counts as an error in every row.
 
 | Metric | Value |
 |---|---|
-| Function-call parse rate | **86.9%** |
-| Function name accuracy | **85.7%** |
-| Argument keys accuracy | **79.8%** |
-| Exact match (name + all argument values) | **75.0%** |
+| Function-call parse rate | **88.4%** |
+| Function name accuracy | **88.0%** |
+| Argument keys accuracy | **81.4%** |
+| Exact match (name + all argument values) | **77.5%** |
 
-Of the 84 expected calls, the model produced a parseable call with the correct function name in all but one of the parsed cases. The main failure mode isn't hallucinated functions — it's the model replying conversationally ("Sure, let me calculate that for you") instead of emitting the call, plus occasional garbled JSON on long nested arguments. Full per-sample outputs: `gpt2fc-eval` writes `results/eval-results.json`; the summary is committed as [`results/metrics-355M.json`](results/metrics-355M.json).
+Of the 1,641 predictions that parsed, all but ~8 named the correct function. The main failure mode isn't hallucinated functions — it's the model replying conversationally ("Sure, let me calculate that for you") instead of emitting the call, plus occasional garbled JSON on long nested arguments. Full per-sample outputs: `gpt2fc-eval` writes `results/eval-results.json`; the full-split summary is committed as [`results/metrics-355M-full.json`](results/metrics-355M-full.json) (run on a Kaggle T4 via `cloud/kaggle_eval.ipynb`).
 
 ![Training loss](results/loss-355M.png)
 
