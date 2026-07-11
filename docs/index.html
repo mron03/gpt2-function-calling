@@ -439,13 +439,13 @@ footer a { color: var(--ink-2); }
 <p class="note"><strong>Lesson:</strong> evaluation infrastructure deserves the same paranoia as model code. I nearly wrote off ~10 hours of GPU time over a quotation mark.</p>
 
 <h2>Results</h2>
-<p>Evaluated on the full held-out test split — 3,929 dialogs the model never saw, of which 1,856 contain a function call in the ground truth (those are the denominator). Scoring is strict: if a prediction doesn't parse, it counts as wrong everywhere.</p>
+<p>Evaluated on the full held-out test split: 3,929 dialogs the model never saw. In 1,856 of them the correct answer <em>is</em> a function call — those are the denominator for all four metrics below. Scoring is strict: if a prediction doesn't parse as JSON, it counts as wrong in every metric.</p>
 
 <div class="tiles" id="result-tiles">
-  <div class="tile"><div class="label">Parseable call produced</div><div class="value"><span class="cnt" data-v="88.4">0</span>%</div></div>
-  <div class="tile"><div class="label">Correct function name</div><div class="value"><span class="cnt" data-v="88.0">0</span>%</div></div>
-  <div class="tile"><div class="label">Correct argument keys</div><div class="value"><span class="cnt" data-v="81.4">0</span>%</div></div>
-  <div class="tile"><div class="label">Exact match, all values</div><div class="value"><span class="cnt" data-v="77.5">0</span>%</div></div>
+  <div class="tile"><div class="label">Parseable call produced</div><div class="value"><span class="cnt" data-v="88.4">0</span>%</div><div class="sub">1,641 of 1,856 expected calls</div></div>
+  <div class="tile"><div class="label">Correct function name</div><div class="value"><span class="cnt" data-v="88.0">0</span>%</div><div class="sub">1,633 — nearly every parsed call</div></div>
+  <div class="tile"><div class="label">Correct argument keys</div><div class="value"><span class="cnt" data-v="81.4">0</span>%</div><div class="sub">1,510 with the exact key set</div></div>
+  <div class="tile"><div class="label">Exact match, all values</div><div class="value"><span class="cnt" data-v="77.5">0</span>%</div><div class="sub">1,439 perfect calls, end to end</div></div>
 </div>
 
 <footer>
