@@ -103,6 +103,17 @@ pre code { background: none; padding: 0; }
   font-size: 0.97rem;
 }
 .note strong { color: var(--ink); }
+.pull {
+  border-left: 3px solid var(--series-1);
+  margin: 1.8em 0 0.3em;
+  padding: 2px 0 2px 20px;
+  font-size: 1.3rem;
+  line-height: 1.45;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+.pull-sub { color: var(--muted); font-size: 0.88rem; margin: 0.4em 0 1.6em; padding-left: 23px; }
 figcaption, .caption { color: var(--muted); font-size: 0.85rem; margin-top: 10px; text-align: center; }
 figure { margin: 1.6em 0; }
 
@@ -281,14 +292,22 @@ footer a { color: var(--ink-2); }
 <h1>GPT-2, from scratch, learns to call functions</h1>
 <p class="byline">by <a href="https://github.com/mron03">Mansur Orazkhan</a> · PyTorch, no <code>transformers</code>, no PEFT · <a href="https://github.com/mron03/gpt2-function-calling">source on GitHub</a> · <a href="https://huggingface.co/spaces/noFFENSE/gpt2-function-calling">try it live</a></p>
 
-<p class="lede">I wrote GPT-2 in raw PyTorch — attention, layer norm, the training loop, everything — and then fine-tuned it until it stopped writing internet text and started emitting machine-readable function calls. This page is the story: the architecture, the training, one very educational bug, and the before/after.</p>
+<p class="lede">I wrote GPT-2 in raw PyTorch — attention, layer norm, the training loop, everything — and then fine-tuned it until it stopped writing internet text and started emitting machine-readable function calls. This page is the story of my adventure into the world of Large Language Models: my tenth (or maybe more) introduction to Transformers, and the training and fine-tuning of a GPT model from scratch.</p>
 
 <div class="hero-term" id="hero-term" aria-label="Demo of the fine-tuned model producing a function call"></div>
 <p class="caption">Real output from the fine-tuned 355M model, greedy decoding, on a schema + request it never saw in training.</p>
 
 <h2>Where this came from</h2>
-<p>I learned to build the GPT architecture by working through Sebastian Raschka's book <a href="https://www.manning.com/books/build-a-large-language-model-from-scratch"><em>Build a Large Language Model From Scratch</em></a> — genuinely one of the best "no magic" resources out there. The book takes you as far as instruction tuning.</p>
-<p>Then I wanted my own twist. Function calling is what makes LLMs <em>useful</em> as agents — the model reads a JSON schema, decides whether a tool is needed, and produces a structured call instead of prose. Could a 2019-era GPT-2, with weights I loaded tensor-by-tensor from OpenAI's original TensorFlow checkpoints, learn that protocol? That extension — dataset, training run, evaluation harness — was my initiative, and it's the fun part.</p>
+<p>I came across Sebastian Raschka's book <a href="https://www.manning.com/books/build-a-large-language-model-from-scratch"><em>Build a Large Language Model From Scratch</em></a>, which teaches everything about LLMs. I even made a LinkedIn <a href="https://www.linkedin.com/posts/mansur0_%D0%BD%D0%B5%D0%B4%D0%B5%D0%BB%D0%B8-%D0%B4%D0%B2%D0%B5-%D0%BD%D0%B0%D0%B7%D0%B0%D0%B4-%D1%8F-%D0%BD%D0%B0%D1%82%D0%BA%D0%BD%D1%83%D0%BB%D1%81%D1%8F-%D0%BD%D0%B0-%D0%BF%D0%BE%D1%81%D1%82-%D0%B2-%D0%BB%D0%B8%D0%BD%D0%BA%D0%B5%D0%B4%D0%B8%D0%BD%D0%B5-activity-7387962458931474432-pdij?utm_source=share&utm_medium=member_desktop&rcm=ACoAACotTlEB021EiE4w4SGML1a2VM_IO9QZLD8">post</a> where I said that I would finish this book and return with a review or some cool information.</p>
+
+<p>Overall, this is a great book that takes you from the most basic stuff to the very final steps of LLM training and fine-tuning. It has a great narrative, clear structure, and practical code examples that show you everything in detail, step by step.</p>
+
+<p>After practicing with the book, trying to recreate each code block of the transformer and GPT training, I wanted my own twist. Due to my background in multi-agent systems, I wanted to teach an LLM to call functions. Function calling is what makes LLMs <em>useful</em> as agents — the model reads a JSON schema, decides whether a tool is needed, and produces a structured call instead of prose.</p>
+
+<p>I did not want to spend a lot of resources training big models, so I settled on GPT-2 (355M), which is small enough to fine-tune on a single GPU in a few hours. So the question was: </p>
+
+<p class="pull" id="pull-q">Can a 2019 GPT-2, which I loaded from OpenAI's checkpoints, learn that protocol?</p>
+<p class="pull-sub">That extension — dataset, training run, evaluation harness — was my initiative, and it's the fun part.</p>
 
 <h2>Part 1 — The transformer, hand-built</h2>
 <p>No <code>AutoModel</code>. The whole model is ~200 lines of PyTorch: token + positional embeddings, a stack of pre-norm transformer blocks, a final layer norm, and a linear head that scores all 50,257 tokens of the vocabulary. Watch a forward pass:</p>
@@ -354,7 +373,7 @@ footer a { color: var(--ink-2); }
   <div class="tile"><div class="label">Model</div><div class="value">355M</div><div class="sub">GPT-2 medium, full fine-tune</div></div>
   <div class="tile"><div class="label">Training samples</div><div class="value">112,960</div><div class="sub">1 epoch, batch size 8</div></div>
   <div class="tile"><div class="label">Hardware</div><div class="value">1× T4</div><div class="sub">Kaggle free tier</div></div>
-  <div class="tile"><div class="label">Wall clock</div><div class="value">9.4 h</div><div class="sub">AdamW, lr 5e-5</div></div>
+  <div class="tile"><div class="label">Wall clock</div><div class="value">9.45 h</div><div class="sub">AdamW, lr 5e-5</div></div>
 </div>
 
 <figure class="card chart-card">
@@ -385,21 +404,21 @@ footer a { color: var(--ink-2); }
   <div class="panel">
     <h4>Base GPT-2 355M — pretrained only</h4>
     <div class="screen" id="scr-base"></div>
-    <div class="verdict fail" id="v-base" style="visibility:hidden">✗ no call — just whitespace, forever</div>
+    <div class="verdict fail" id="v-base" style="visibility:hidden">✗ no call — invents its own JSON, then hallucinates a ###SYSTEM: turn</div>
   </div>
   <div class="panel">
     <h4>Fine-tuned 355M</h4>
     <div class="screen" id="scr-ft"></div>
-    <div class="verdict ok" id="v-ft" style="visibility:hidden">✓ parses — {"name": "get_current_weather", "arguments": {"location": "Almaty"}}</div>
+    <div class="verdict ok" id="v-ft" style="visibility:hidden">✓ parses — {"name": "get_current_weather", "arguments": {"location": "almaty"}}</div>
   </div>
 </div>
 <button class="replay" id="replay">↺ Replay</button>
 
-<p>The base model is a web-text predictor: it sees a JSON blob, opens a brace, and pads whitespace until the token budget runs out. It has no concept of the dialog, the tool, or stopping. One epoch of fine-tuning installs the whole protocol: answer as the assistant, treat the schema as callable, pull <code>"Almaty"</code> out of the user's sentence, emit end-of-text, done.</p>
+<p>The base model is a web-text predictor: it treats the prompt as a document to continue. Here it invents a schema-shaped JSON blob of its own, then hallucinates a <code>###SYSTEM:</code> turn — pure surface imitation of the prompt's format. On other prompts it parrots the schema back or just pads whitespace until the token budget runs out. The failure mode varies, but the constant is that it never makes a call: it has no concept of the dialog, the tool, or stopping. One epoch of fine-tuning installs the whole protocol: answer as the assistant, treat the schema as callable, pull <code>"almaty"</code> out of the user's sentence, emit end-of-text, done.</p>
 <p class="note"><strong>Don't take my word for it</strong> — both models run live in a <a href="https://huggingface.co/spaces/noFFENSE/gpt2-function-calling">Hugging Face Space</a>: type your own request, edit the schema, and watch them stream side by side.</p>
 
 <h2>The bug that made a working model look broken</h2>
-<p>Here's the war story. My first evaluation said the model failed at function calling almost completely — single-digit accuracy. The generations <em>looked</em> right, but nothing parsed. The culprit wasn't the model. Glaive's ground truth (and therefore my faithfully-imitating model) emits <em>almost</em>-JSON:</p>
+<p>My first evaluation said the model failed at function calling almost completely — single-digit accuracy. The generations <em>looked</em> right, but nothing parsed. The culprit wasn't the model. Glaive's ground truth (and therefore my faithfully-imitating model) emits <em>almost</em>-JSON:</p>
 
 <pre><code>{"name": "get_current_weather", "arguments": <b>'</b>{"location": "Almaty"}<b>'</b>}</code></pre>
 
@@ -420,22 +439,14 @@ footer a { color: var(--ink-2); }
 <p class="note"><strong>Lesson:</strong> evaluation infrastructure deserves the same paranoia as model code. I nearly wrote off ~10 hours of GPU time over a quotation mark.</p>
 
 <h2>Results</h2>
-<p>Evaluated on 200 held-out dialogs the model never saw (84 contain a function call in the ground truth — those are the denominator). Scoring is strict: if a prediction doesn't parse, it counts as wrong everywhere.</p>
+<p>Evaluated on the full held-out test split — 3,929 dialogs the model never saw, of which 1,856 contain a function call in the ground truth (those are the denominator). Scoring is strict: if a prediction doesn't parse, it counts as wrong everywhere.</p>
 
 <div class="tiles" id="result-tiles">
-  <div class="tile"><div class="label">Parseable call produced</div><div class="value"><span class="cnt" data-v="86.9">0</span>%</div></div>
-  <div class="tile"><div class="label">Correct function name</div><div class="value"><span class="cnt" data-v="85.7">0</span>%</div></div>
-  <div class="tile"><div class="label">Correct argument keys</div><div class="value"><span class="cnt" data-v="79.8">0</span>%</div></div>
-  <div class="tile"><div class="label">Exact match, all values</div><div class="value"><span class="cnt" data-v="75.0">0</span>%</div></div>
+  <div class="tile"><div class="label">Parseable call produced</div><div class="value"><span class="cnt" data-v="88.4">0</span>%</div></div>
+  <div class="tile"><div class="label">Correct function name</div><div class="value"><span class="cnt" data-v="88.0">0</span>%</div></div>
+  <div class="tile"><div class="label">Correct argument keys</div><div class="value"><span class="cnt" data-v="81.4">0</span>%</div></div>
+  <div class="tile"><div class="label">Exact match, all values</div><div class="value"><span class="cnt" data-v="77.5">0</span>%</div></div>
 </div>
-
-<p>Of the calls that parsed, all but <em>one</em> named the right function. The dominant failure mode is charmingly human: the model replies "Sure, let me look that up for you" — and then doesn't. It also inherited its teacher's quirks wholesale: it wraps arguments in Glaive's trademark single quotes, and it politely refuses to book flights, because Glaive's assistants always refused to book flights.</p>
-
-<h2>Making it fast(er): the KV cache</h2>
-<p>Naive decoding is O(n²): every new token recomputes attention over the entire sequence, so token #60 of a 250-token prompt re-processes ~300 positions just to produce one more. The fix is the classic one — cache each layer's key/value tensors and feed only the newest token per step. Implemented in the hand-written attention (the causal mask generalizes to a rectangular slice), it's <strong>4.2× faster on CPU</strong> — 2.9 → 12.1 tokens/s — with outputs verified bit-identical to the uncached path.</p>
-
-<h2>What I'd build next</h2>
-<p>Multi-turn function calling with <code>FUNCTION RESPONSE</code> turns fed back into the context, batched decoding, and a full-test-split evaluation on GPU. The scaffolding is in the repo.</p>
 
 <footer>
   <p><a href="https://github.com/mron03/gpt2-function-calling">Code, tests, and training recipes on GitHub</a> · <a href="https://huggingface.co/spaces/noFFENSE/gpt2-function-calling">live demo</a> + <a href="https://huggingface.co/noFFENSE/gpt2-355M-function-calling">weights</a> on Hugging Face · architecture learned from <a href="https://github.com/rasbt/LLMs-from-scratch">Sebastian Raschka, <em>Build a Large Language Model From Scratch</em></a> · data: <a href="https://huggingface.co/datasets/glaiveai/glaive-function-calling-v2">Glaive Function Calling v2</a> · base weights: OpenAI GPT-2.</p>
@@ -628,7 +639,7 @@ onSeen(fwdCard, () => {
 })();
 
 /* ---------- before / after duel ---------- */
-const PROMPT_MINI = '<span style="color:var(--muted)">###USER: What’s the weather like in Almaty right now?\n</span>';
+const PROMPT_MINI = '<span style="color:var(--muted)">###USER: what is weather in almaty?\n</span>';
 function runDuel() {
   const base = document.getElementById("scr-base");
   const ft = document.getElementById("scr-ft");
@@ -637,19 +648,19 @@ function runDuel() {
   base.innerHTML = PROMPT_MINI; ft.innerHTML = PROMPT_MINI;
   const baseSpan = document.createElement("span"); base.appendChild(baseSpan);
   const ftSpan = document.createElement("span"); ft.appendChild(ftSpan);
-  const ftText = '###ASSISTANT: <functioncall> {"name": "get_current_weather", "arguments": \'{"location": "Almaty"}\'}';
+  const ftText = '###ASSISTANT: <functioncall> {"name": "get_current_weather", "arguments": \'{"location": "almaty"}\'}';
+  const baseText = '{       "weather": {\n       "type": "string",\n       "description": "The weather in almaty"\n     }\n###SYSTEM: What is weather in almaty?\n{';
   if (reduced) {
-    baseSpan.innerHTML = "{" + '<span class="sp">  </span>'.repeat(48);
+    baseSpan.textContent = baseText;
     ftSpan.textContent = ftText;
     vb.style.visibility = "visible"; vf.style.visibility = "visible";
     return;
   }
   let i = 0;
   (function tb() {
-    if (i === 0) baseSpan.textContent = "{";
-    else if (i < 60) baseSpan.innerHTML = "{" + '<span class="sp">  </span> '.repeat(i);
-    else { vb.style.visibility = "visible"; return; }
-    i++; setTimeout(tb, 55);
+    baseSpan.textContent = baseText.slice(0, ++i);
+    if (i < baseText.length) setTimeout(tb, 30);
+    else vb.style.visibility = "visible";
   })();
   let j = 0;
   (function tf() {
@@ -660,6 +671,23 @@ function runDuel() {
 }
 onSeen(document.querySelector(".duel"), runDuel);
 document.getElementById("replay").addEventListener("click", runDuel);
+
+/* ---------- fit the pull-quote on one line ---------- */
+(function fitPull() {
+  const el = document.getElementById("pull-q");
+  if (!el) return;
+  const fit = () => {
+    el.style.whiteSpace = "nowrap";
+    el.style.fontSize = "";
+    let size = parseFloat(getComputedStyle(el).fontSize);
+    while (size > 12 && el.scrollWidth > el.clientWidth) {
+      size -= 0.5;
+      el.style.fontSize = size + "px";
+    }
+  };
+  fit();
+  addEventListener("resize", fit);
+})();
 
 /* ---------- parser meters ---------- */
 onSeen(document.getElementById("parser-card"), () => {

@@ -40,7 +40,7 @@ Same prompt (the weather example above), same greedy decoding — only the weigh
 
 | | Model output |
 |---|---|
-| **Base GPT-2 355M** | `{` followed by 128 tokens of whitespace — a web-text predictor sees a JSON blob and keeps padding it, with no concept of the dialog format, the tool, or when to stop |
+| **Base GPT-2 355M** | No function call — for this prompt, `{` followed by 128 tokens of whitespace. On other prompts it parrots the schema back or invents its own JSON: a web-text predictor continuing a document, with no concept of the dialog format, the tool, or when to stop |
 | **Fine-tuned 355M** | `###ASSISTANT: <functioncall> {"name": "get_current_weather", "arguments": '{"location": "Almaty"}'}` — then a clean end-of-text |
 
 One epoch of fine-tuning teaches the *protocol*: answer as the assistant, treat the schema as a callable tool, pull the arguments out of the user's sentence, and stop.
@@ -132,8 +132,6 @@ gpt2fc-eval --checkpoint checkpoints/gpt2-355M-function-calling.pth \
 
 - A 355M model trained for one epoch learns the *format* essentially perfectly (near-100% parseable calls) and generalizes to unseen schemas and argument values — but it inherits its training distribution's quirks: it reproduces Glaive's single-quoted arguments style, and it refuses requests (e.g. flight booking) that Glaive's assistants habitually refused.
 - Evaluation infrastructure matters as much as the model: a parser bug made a well-trained model look completely broken (4% vs 100% parse rate on identical outputs).
-- Naive decoding recomputes attention over the whole sequence for every new token — O(n²) and painful on CPU. Adding a hand-rolled **KV cache** (each step feeds one token, attention reads cached keys/values) made generation **4.2× faster** on CPU (2.9 → 12.1 tok/s, identical outputs; see `tests/test_kv_cache.py` for the equivalence proof).
-- Single-turn only: the model sees `SYSTEM + USER → ASSISTANT`. Multi-turn function calling (with `FUNCTION RESPONSE` turns) is future work.
 
 ## Acknowledgments
 
